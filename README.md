@@ -24,6 +24,8 @@ The `dinput8proxy.ini` file allows you to configure the proxy DLL behavior. Avai
 | `CloseProcessOnDLLLoadFailure` | Terminates the process if a DLL fails to load.            | `1`     |
 | `PrintStatusOnLoad`          | Outputs a status message to the console when loaded.        | `1`     |
 
+> To disable a setting, set it to `0`. To enable it, set it to `1`.
+
 ## Loading Additional DLLs
 To load extra DLLs, list them in `AdditionalDLLs.txt`. The order matters, and they are loaded sequentially. Each line should contain the name of a DLL.
 
