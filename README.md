@@ -21,6 +21,10 @@ Line order is respected, and the DLLs are loaded in the order they appear in the
 Each line in the file should contain the name of a DLL to be loaded. For example:
 
 ```
+; this is a comment line, so it will be ignored
+; the following DLLs will be loaded
 Susano.dll
 AnotherDLL.dll
+; this one not, as it's commented out
+; NotThisOne.dll
 ```

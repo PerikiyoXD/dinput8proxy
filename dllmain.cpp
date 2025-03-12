@@ -108,7 +108,9 @@ void LoadINI()
 void CreateDefaultAdditionalDLLsFile()
 {
     std::ofstream file("AdditionalDLLs.txt");
-    file << "Susano.dll\n";
+    file << "; Add additional DLLs to load here, one per line\n";
+    file << "; Example:\n";
+    file << "; YourAwesomeMod.dll\n";
     file.close();
 }
 
