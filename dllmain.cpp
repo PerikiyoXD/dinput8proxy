@@ -1,10 +1,15 @@
 #include <cstdio>
 #include <fstream>
 #include <iostream>
+#include <memory>
 #include <ostream>
 #include <string>
 #include <format>
+#include <filesystem>
+#include <unordered_map>
 #include <windows.h>
+
+#include "inipp.h"
 
 // Forward declare DINPUT8 functions
 typedef HRESULT(WINAPI* DirectInput8Create_t)(HINSTANCE, DWORD, REFIID, LPVOID*, LPUNKNOWN);
@@ -54,20 +59,50 @@ BOOL CloseProcessOnDLLLoadFailure = true;
 BOOL PrintStatusOnLoad = true;
 
 // Additional DLLs
-LPSTR AdditionalDLLs[256];
-int AdditionalDLLCount = 0;
+std::vector<std::unique_ptr<std::string>> AdditionalDLLs;
 
-// Load or create the default INI file
+
+std::unordered_map<std::string, BOOL*> settingsMap = {
+    {"ShowMessageBox", &ShowMessageBox},
+    {"LoadAdditionalDLLs", &LoadAdditionalDLLs},
+    {"CloseProcessOnDLLLoadFailure", &CloseProcessOnDLLLoadFailure},
+    {"PrintStatusOnLoad", &PrintStatusOnLoad}
+};
+
 void LoadINI()
 {
-    char path[MAX_PATH];
-    GetModuleFileNameA(0, path, MAX_PATH);
-    strcat_s(path, ".ini");
+    std::filesystem::path path = std::filesystem::current_path() / "dinput8proxy.ini";
+    std::cout << "Loading INI file: " << path << std::endl;
 
-    ShowMessageBox = GetPrivateProfileIntA("Settings", "ShowMessageBox", 1, path);
-    LoadAdditionalDLLs = GetPrivateProfileIntA("Settings", "LoadAdditionalDLLs", 1, path);
-    CloseProcessOnDLLLoadFailure = GetPrivateProfileIntA("Settings", "CloseProcessOnDLLLoadFailure", 1, path);
-    PrintStatusOnLoad = GetPrivateProfileIntA("Settings", "PrintStatusOnLoad", 1, path);
+    std::ifstream iniFile(path.string());
+    
+    if(iniFile.fail())
+    {
+        // Create a default INI file
+        std::ofstream file(path.string());
+        file << "[Settings]\n";
+        for (const auto& setting : settingsMap)
+        {
+            file << setting.first << " = " << *setting.second << "\n";
+        }
+        file.close();
+        iniFile.open(path.string());
+    }
+
+    inipp::Ini<char> ini;
+    ini.parse(iniFile);
+    ini.interpolate();
+
+    for (const auto& setting : settingsMap)
+    {
+        std::string value;
+        if (inipp::get_value(ini.sections["Settings"], setting.first, value))
+        {
+            *setting.second = std::stoi(value) != 0;
+        }
+    }
+
+    iniFile.close();
 }
 
 void CreateDefaultAdditionalDLLsFile()
@@ -90,38 +125,36 @@ void DoLoadAdditionalDLLsFile()
         return;
     }
 
-    std::string line;
-    while (std::getline(file, line))
-    {
-        line.erase(std::remove(line.begin(), line.end(), '\n'), line.end());
-
-        printf("Found additional DLL: %s\n", line.c_str());
-
-        // Add the DLL to the list
-        AdditionalDLLs[AdditionalDLLCount] = (LPSTR)line.c_str();
-        AdditionalDLLCount++;
-    }
-
+    std::unique_ptr<std::string> contents = std::make_unique<std::string>((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
     file.close();
 
-    if (AdditionalDLLCount == 0)
+    std::istringstream stream(*contents);
+
+    // Cleanup contents of empty lines, and remove comments
+    for (std::string line; std::getline(stream, line);)
     {
-        MessageBoxA(0, "No additional DLLs found in AdditionalDLLs.txt", "Error", MB_ICONERROR);
-        ExitProcess(1);
+        if (line.empty() || line[0] == ';')
+        {
+            continue;
+        }
+        AdditionalDLLs.push_back(std::make_unique<std::string>(line));
     }
+
+    file.close();    
 }
 
 void PrintStatus()
 {
-    printf("DINPUT8 Proxy Console\n");
-    printf("ShowMessageBox: %d\n", ShowMessageBox);
-    printf("LoadAdditionalDLLs: %d\n", LoadAdditionalDLLs);
-    printf("CloseProcessOnDLLLoadFailure: %d\n", CloseProcessOnDLLLoadFailure);
-    printf("AdditionalDLLs: %d\n", AdditionalDLLCount);
-    for (int i = 0; i < AdditionalDLLCount; i++)
+    std::cout << "DINPUT8 Proxy Console" << std::endl;
+    std::cout << "ShowMessageBox: " << ShowMessageBox << std::endl;
+    std::cout << "LoadAdditionalDLLs: " << LoadAdditionalDLLs << std::endl;
+    std::cout << "CloseProcessOnDLLLoadFailure: " << CloseProcessOnDLLLoadFailure << std::endl;
+    std::cout << "AdditionalDLLs: " << AdditionalDLLs.size() << std::endl;
+    for (const auto& dll : AdditionalDLLs)
     {
-        printf("  %s\n", AdditionalDLLs[i]);
+        std::cout << "  " << dll << std::endl;
     }
+    std::cout << std::endl;
 }
 
 // Load additional DLLs from the AdditionalDLLs array
@@ -131,17 +164,22 @@ void DoLoadAdditionalDLLs()
 
     DoLoadAdditionalDLLsFile();
 
-    for (int i = 0; i < AdditionalDLLCount; i++)
+    for (size_t i = 0; i < AdditionalDLLs.size(); i++)
     {
-        HMODULE hModule = LoadLibraryA(AdditionalDLLs[i]);
+		HMODULE hModule = LoadLibraryA(AdditionalDLLs[i]->c_str());
         if (!hModule)
         {
-            MessageBoxA(0, std::format("Failed to load additional DLL: {0}", AdditionalDLLs[i]).c_str(), "Error", MB_ICONERROR);
-            ExitProcess(1);
+			std::cout << "Failed to load additional DLL: " << AdditionalDLLs[i]->c_str() << std::endl;
+            
+            if (CloseProcessOnDLLLoadFailure)
+            {
+                Sleep(5000);
+                ExitProcess(1);
+            }
         }
         else
         {
-            printf("Loaded additional DLL: %s\n", AdditionalDLLs[i]);
+            std::cout << "Loaded additional DLL: " << AdditionalDLLs[i]->c_str() << std::endl;
         }
     }
 }
@@ -156,7 +194,7 @@ void AllocateConsole()
 
     SetConsoleTitleA("DINPUT8 Proxy Console");
     SetConsoleTextAttribute(GetStdHandle(STD_OUTPUT_HANDLE), FOREGROUND_GREEN | FOREGROUND_BLUE | FOREGROUND_RED);
-    SetConsoleMode(GetStdHandle(STD_OUTPUT_HANDLE), ENABLE_VIRTUAL_TERMINAL_PROCESSING);
+    // SetConsoleMode(GetStdHandle(STD_OUTPUT_HANDLE), ENABLE_VIRTUAL_TERMINAL_PROCESSING);
     // SetConsoleMode(GetStdHandle(STD_INPUT_HANDLE), ENABLE_QUICK_EDIT_MODE | ENABLE_EXTENDED_FLAGS | ENABLE_INSERT_MODE | ENABLE_PROCESSED_INPUT | ENABLE_MOUSE_INPUT);
 }
 
@@ -165,6 +203,8 @@ void DoStuff()
 {
     LoadOriginalDLL();
 
+    AllocateConsole();
+
     LoadINI();
 
     if (ShowMessageBox)
@@ -172,7 +212,6 @@ void DoStuff()
         MessageBoxA(0, "DINPUT8 Proxy Loaded", "Success", MB_ICONINFORMATION);
     }
 
-    AllocateConsole();
 
     PrintStatus();
 
