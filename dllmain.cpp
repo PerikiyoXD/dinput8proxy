@@ -19,6 +19,7 @@ typedef HRESULT(WINAPI* DllRegisterServer_t)();
 typedef HRESULT(WINAPI* DllUnregisterServer_t)();
 typedef HRESULT(WINAPI* GetdfDIJoystick_t)();
 
+// Global Variables
 HMODULE hOriginalDLL = NULL;
 DirectInput8Create_t orig_DirectInput8Create = nullptr;
 DllCanUnloadNow_t orig_DllCanUnloadNow = nullptr;
@@ -26,6 +27,21 @@ DllGetClassObject_t orig_DllGetClassObject = nullptr;
 DllRegisterServer_t orig_DllRegisterServer = nullptr;
 DllUnregisterServer_t orig_DllUnregisterServer = nullptr;
 GetdfDIJoystick_t orig_GetdfDIJoystick = nullptr;
+
+// Configurable Settings
+BOOL ShowMessageBox = true;
+BOOL LoadAdditionalDLLs = true;
+BOOL CloseProcessOnDLLLoadFailure = true;
+BOOL PrintStatusOnLoad = true;
+std::vector<std::unique_ptr<std::string>> AdditionalDLLs;
+
+// Settings Mapping
+std::unordered_map<std::string, BOOL*> settingsMap = {
+    {"ShowMessageBox", &ShowMessageBox},
+    {"LoadAdditionalDLLs", &LoadAdditionalDLLs},
+    {"CloseProcessOnDLLLoadFailure", &CloseProcessOnDLLLoadFailure},
+    {"PrintStatusOnLoad", &PrintStatusOnLoad}
+};
 
 // Load the original DINPUT8.dll
 void LoadOriginalDLL()
@@ -53,27 +69,10 @@ void LoadOriginalDLL()
     }
 }
 
-BOOL ShowMessageBox = true;
-BOOL LoadAdditionalDLLs = true;
-BOOL CloseProcessOnDLLLoadFailure = true;
-BOOL PrintStatusOnLoad = true;
-
-// Additional DLLs
-std::vector<std::unique_ptr<std::string>> AdditionalDLLs;
-
-
-std::unordered_map<std::string, BOOL*> settingsMap = {
-    {"ShowMessageBox", &ShowMessageBox},
-    {"LoadAdditionalDLLs", &LoadAdditionalDLLs},
-    {"CloseProcessOnDLLLoadFailure", &CloseProcessOnDLLLoadFailure},
-    {"PrintStatusOnLoad", &PrintStatusOnLoad}
-};
-
+// Load configuration settings from INI file
 void LoadINI()
 {
     std::filesystem::path path = std::filesystem::current_path() / "dinput8proxy.ini";
-    std::cout << "Loading INI file: " << path << std::endl;
-
     std::ifstream iniFile(path.string());
     
     if(iniFile.fail())
@@ -105,6 +104,7 @@ void LoadINI()
     iniFile.close();
 }
 
+// Handle Additional DLLs
 void CreateDefaultAdditionalDLLsFile()
 {
     std::ofstream file("AdditionalDLLs.txt");
@@ -119,7 +119,6 @@ void DoLoadAdditionalDLLsFile()
     if (!LoadAdditionalDLLs) return;
 
     std::ifstream file("AdditionalDLLs.txt");
-
     if (!file)
     {
         MessageBoxA(0, "Failed to open AdditionalDLLs.txt", "Error", MB_ICONERROR);
@@ -127,52 +126,29 @@ void DoLoadAdditionalDLLsFile()
         return;
     }
 
-    std::unique_ptr<std::string> contents = std::make_unique<std::string>((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+    std::istringstream stream(std::string((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>()));
     file.close();
 
-    std::istringstream stream(*contents);
-
-    // Cleanup contents of empty lines, and remove comments
     for (std::string line; std::getline(stream, line);)
     {
-        if (line.empty() || line[0] == ';')
+        if (!line.empty() && line[0] != ';')
         {
-            continue;
+            AdditionalDLLs.push_back(std::make_unique<std::string>(line));
         }
-        AdditionalDLLs.push_back(std::make_unique<std::string>(line));
     }
-
-    file.close();    
 }
 
-void PrintStatus()
-{
-    std::cout << "DINPUT8 Proxy Console" << std::endl;
-    std::cout << "ShowMessageBox: " << ShowMessageBox << std::endl;
-    std::cout << "LoadAdditionalDLLs: " << LoadAdditionalDLLs << std::endl;
-    std::cout << "CloseProcessOnDLLLoadFailure: " << CloseProcessOnDLLLoadFailure << std::endl;
-    std::cout << "AdditionalDLLs: " << AdditionalDLLs.size() << std::endl;
-    for (const auto& dll : AdditionalDLLs)
-    {
-        std::cout << "  " << dll << std::endl;
-    }
-    std::cout << std::endl;
-}
-
-// Load additional DLLs from the AdditionalDLLs array
 void DoLoadAdditionalDLLs()
 {
     if (!LoadAdditionalDLLs) return;
-
     DoLoadAdditionalDLLsFile();
 
-    for (size_t i = 0; i < AdditionalDLLs.size(); i++)
+    for (const auto& dll : AdditionalDLLs)
     {
-		HMODULE hModule = LoadLibraryA(AdditionalDLLs[i]->c_str());
+        HMODULE hModule = LoadLibraryA(dll->c_str());
         if (!hModule)
         {
-			std::cout << "Failed to load additional DLL: " << AdditionalDLLs[i]->c_str() << std::endl;
-            
+            std::cout << "Failed to load additional DLL: " << *dll << std::endl;
             if (CloseProcessOnDLLLoadFailure)
             {
                 Sleep(5000);
@@ -181,46 +157,46 @@ void DoLoadAdditionalDLLs()
         }
         else
         {
-            std::cout << "Loaded additional DLL: " << AdditionalDLLs[i]->c_str() << std::endl;
+            std::cout << "Loaded additional DLL: " << *dll << std::endl;
         }
     }
 }
-    
+
+// Console Output
 void AllocateConsole()
 {
     AllocConsole();
-    FILE* fDummy;
-    freopen_s(&fDummy, "CONOUT$", "w", stdout);
-    freopen_s(&fDummy, "CONOUT$", "w", stderr);
-    freopen_s(&fDummy, "CONIN$", "r", stdin);
-
+    freopen_s((FILE**)stdout, "CONOUT$", "w", stdout);
     SetConsoleTitleA("DINPUT8 Proxy Console");
-    SetConsoleTextAttribute(GetStdHandle(STD_OUTPUT_HANDLE), FOREGROUND_GREEN | FOREGROUND_BLUE | FOREGROUND_RED);
-    // SetConsoleMode(GetStdHandle(STD_OUTPUT_HANDLE), ENABLE_VIRTUAL_TERMINAL_PROCESSING);
-    // SetConsoleMode(GetStdHandle(STD_INPUT_HANDLE), ENABLE_QUICK_EDIT_MODE | ENABLE_EXTENDED_FLAGS | ENABLE_INSERT_MODE | ENABLE_PROCESSED_INPUT | ENABLE_MOUSE_INPUT);
 }
 
+void PrintStatus()
+{
+    std::cout << "DINPUT8 Proxy Console\n";
+    for (const auto& setting : settingsMap)
+    {
+        std::cout << setting.first << ": " << *setting.second << std::endl;
+    }
+    std::cout << "Additional DLLs: " << AdditionalDLLs.size() << std::endl;
+    for (const auto& dll : AdditionalDLLs)
+    {
+        std::cout << *dll << std::endl;
+    }
+    std::cout << std::endl;
+}
 
+// Initialization Function
 void DoStuff()
 {
     LoadOriginalDLL();
-
     AllocateConsole();
-
     LoadINI();
-
-    if (ShowMessageBox)
-    {
-        MessageBoxA(0, "DINPUT8 Proxy Loaded", "Success", MB_ICONINFORMATION);
-    }
-
-
+    if (ShowMessageBox) MessageBoxA(0, "DINPUT8 Proxy Loaded", "Success", MB_ICONINFORMATION);
     PrintStatus();
-
     DoLoadAdditionalDLLs();
 }
 
-// Proxy functions
+// DllMain Entry Point
 BOOL WINAPI DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserved)
 {
     if (ul_reason_for_call == DLL_PROCESS_ATTACH)
