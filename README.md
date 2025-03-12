@@ -1,30 +1,48 @@
 # dinput8proxy
 
-Painless, universal DInput8 proxy DLL for games and mods. 
-Allows loading additional DLL files to extend functionality.
-Call it, the universal mod loader.
+**A painless, universal DirectInput8 (DInput8) proxy DLL for extending functionality.**
 
-# Features
-- Load additional DLL files defined in `dinput8proxy.ini`.
+This proxy DLL allows you to load additional DLL files effortlessly, making it a universal mod loader.
 
-# Configuration
-The `dinput8proxy.ini` file is used to configure the proxy DLL. The following settings are available:
+## Features
+- Configurable proxy DLL via `dinput8proxy.ini`
+- Supports loading additional DLLs specified in `AdditionalDLLs.txt`
+- Customizable behavior through configuration options
 
-- `ShowMessageBox`: Show a message box when the proxy DLL is loaded (default: 1).
-- `LoadAdditionalDLLs`: Load additional DLLs specified in `AdditionalDLLs.txt` (default: 1).
-- `CloseProcessOnDLLLoadFailure`: Close the process if an additional DLL fails to load (default: 1).
-- `PrintStatusOnLoad`: Print the status to the console when the proxy DLL is loaded (default: 1).
+### Configurable Settings:
+- **Show a message box** when the proxy DLL is loaded
+- **Terminate the process** if an additional DLL fails to load
+- **Print status messages** to the console on load
 
-# Loading Additional DLLs
-The `AdditionalDLLs.txt` file is used to specify additional DLLs to be loaded. 
-Line order is respected, and the DLLs are loaded in the order they appear in the file.
-Each line in the file should contain the name of a DLL to be loaded. For example:
+## Configuration
+The `dinput8proxy.ini` file allows you to configure the proxy DLL behavior. Available settings:
 
+| Setting                      | Description                                                   | Default |
+|------------------------------|---------------------------------------------------------------|---------|
+| `ShowMessageBox`             | Displays a message box when the proxy DLL loads.            | `1`     |
+| `LoadAdditionalDLLs`         | Loads extra DLLs from `AdditionalDLLs.txt`.                 | `1`     |
+| `CloseProcessOnDLLLoadFailure` | Terminates the process if a DLL fails to load.            | `1`     |
+| `PrintStatusOnLoad`          | Outputs a status message to the console when loaded.        | `1`     |
+
+## Loading Additional DLLs
+To load extra DLLs, list them in `AdditionalDLLs.txt`. The order matters, and they are loaded sequentially. Each line should contain the name of a DLL.
+
+### Example `AdditionalDLLs.txt`:
 ```
-; this is a comment line, so it will be ignored
-; the following DLLs will be loaded
+; This is a comment line and will be ignored
+; The following DLLs will be loaded:
 Susano.dll
 AnotherDLL.dll
-; this one not, as it's commented out
+
+; This one will NOT be loaded since it's commented out
 ; NotThisOne.dll
 ```
+
+## Usage
+1. Place `dinput8proxy.dll` in the application directory.
+2. Configure settings in `dinput8proxy.ini` (optional).
+3. Specify additional DLLs in `AdditionalDLLs.txt` (if needed).
+4. Launch the application, and the proxy DLL will handle the rest.
+
+---
+This tool simplifies extending game and software functionality by seamlessly injecting additional DLLs. Happy modding!
